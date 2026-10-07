@@ -315,16 +315,16 @@ namespace proc {
 
       BOOST_LOG(info) << "Executing: ["sv << _app.cmd << "] in ["sv << working_dir << ']';
 
+#if RAZER_MOD == 1
       if(_app.launch_type != "Xbox")
-        _process = platf::run_command(_app.elevated, true, _app.cmd, working_dir, _env, _pipe.get(), ec, &_process_group
-        #if RAZER_MOD == 1
-        , _app.monitor_exe
-        #endif
-        );
+        _process = platf::run_command(_app.elevated, true, _app.cmd, working_dir, _env, _pipe.get(), ec, &_process_group, _app.monitor_exe);
       else
       {
         _process = platf::run_MS_store_command(_app.cmd, ec, &_process_group);
       }
+#else
+      _process = platf::run_command(_app.elevated, true, _app.cmd, working_dir, _env, _pipe.get(), ec, &_process_group);
+#endif
 
       if (ec) {
         BOOST_LOG(warning) << "Couldn't run ["sv << _app.cmd << "]: System: "sv << ec.message();
