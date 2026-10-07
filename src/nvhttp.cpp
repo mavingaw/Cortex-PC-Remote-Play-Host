@@ -37,9 +37,11 @@
 #include "video.h"
 #include <openssl/md5.h>
 #include <curl/curl.h>
+#if RAZER_MOD == 1
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
+#endif
 
 #if RAZER_MOD == 1
 #include "RazerState.h"
