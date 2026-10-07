@@ -34,6 +34,7 @@ Install Requirements
           libssl-dev \
           libva-dev \  # VA-API
           libvdpau-dev \
+          libvdpau-dev \
           libwayland-dev \  # Wayland
           libx11-dev \  # X11
           libxcb-shm0-dev \  # X11
@@ -115,6 +116,7 @@ Install Requirements
           libpulse-dev \
           libssl-dev \
           libva-dev \  # VA-API
+          libvdpau-dev \
           libwayland-dev \  # Wayland
           libx11-dev \  # X11
           libxcb-shm0-dev \  # X11
@@ -157,6 +159,7 @@ Install Requirements
           libpulse-dev \
           libssl-dev \
           libva-dev \  # VA-API
+          libvdpau-dev \
           libwayland-dev \  # Wayland
           libx11-dev \  # X11
           libxcb-shm0-dev \  # X11

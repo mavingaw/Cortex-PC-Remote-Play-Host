@@ -15,9 +15,11 @@
 #include "thread_safe.h"
 #include "utility.h"
 
+#ifdef _WIN32
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <endpointvolume.h>
+#endif
 #include <iostream>
 
 namespace audio {

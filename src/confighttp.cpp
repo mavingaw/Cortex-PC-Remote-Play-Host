@@ -49,14 +49,11 @@
 #define RAZER_WEB_API 1
 #endif
 
-#if RAZER_WEB_API == 1
-
-//#define ENABLE_SUNSHINE_WEB_UI
-
+// CORS headers are emitted on every response regardless of RAZER_WEB_API,
+// so the values must be defined unconditionally.
 #define ACCESS_CONTROL_ALLOW_ORIGIN "*"
 #define ACCESS_CONTROL_ALLOW_METHODS "GET, POST, PUT, DELETE, OPTIONS"
 #define ACCESS_CONTROL_ALLOW_HEADERS "Content-Type"
-#endif
 
 using namespace std::literals;
 
@@ -1505,8 +1502,10 @@ void
         }
 
         BOOST_LOG(fatal) << "Couldn't start Configuration HTTPS server on port ["sv << port_https << "]: "sv << err.what();
+#if RAZER_MOD == 1
         rz_state::message_state_t tmpmsg;
         rz_state::SendEventToCortex(rz_state::CortexEvent::Cortex_Event_Change_HTTP_Port, tmpmsg);
+#endif
         shutdown_event->raise(true);
         return;
       }
