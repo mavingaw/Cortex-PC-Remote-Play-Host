@@ -1442,7 +1442,9 @@ namespace nvhttp {
       app.put("IsHdrSupported"s, video::active_hevc_mode == 3 ? 1 : 0);
       app.put("AppTitle"s, proc.name);
       app.put("ID", proc.id);
+#if RAZER_MOD == 1
       app.put("GUID", proc.guid);
+#endif
       
 #if RAZER_MOD == 1
       //speical cover image for desktop
@@ -1978,8 +1980,10 @@ namespace nvhttp {
         }
 
         BOOST_LOG(fatal) << "Couldn't start http server on ports ["sv << port_https << ", "sv << port_https << "]: "sv << err.what();
+#if RAZER_MOD == 1
         rz_state::message_state_t tmpmsg;
         rz_state::SendEventToCortex(rz_state::CortexEvent::Cortex_Event_Change_HTTP_Port, tmpmsg);
+#endif
         shutdown_event->raise(true);
         return;
       }
