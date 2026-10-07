@@ -107,12 +107,16 @@ set(SUNSHINE_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/round_robin.h"
         "${CMAKE_SOURCE_DIR}/src/stat_trackers.h"
         "${CMAKE_SOURCE_DIR}/src/stat_trackers.cpp"
+        ${PLATFORM_TARGET_FILES})
+
+if(RAZER_MOD)
+    list(APPEND SUNSHINE_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/RazerState.h"
         "${CMAKE_SOURCE_DIR}/src/RazerState.cpp"
         "${CMAKE_SOURCE_DIR}/src/RazerNamedPipe.h"
         "${CMAKE_SOURCE_DIR}/src/UIScaleHelper.h"
-        "${CMAKE_SOURCE_DIR}/src/UIScaleHelper.cpp"
-        ${PLATFORM_TARGET_FILES})
+        "${CMAKE_SOURCE_DIR}/src/UIScaleHelper.cpp")
+endif()
 
 if(NOT SUNSHINE_ASSETS_DIR_DEF)
     set(SUNSHINE_ASSETS_DIR_DEF "${SUNSHINE_ASSETS_DIR}")
