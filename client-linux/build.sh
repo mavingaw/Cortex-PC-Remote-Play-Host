@@ -88,7 +88,8 @@ fi
 
 log "Compiling with $JOBS jobs"
 (cd "$BUILD" && make -j"$JOBS")
-cp "$BUILD/app/moonlight" "$OUT/moonlight"
+# Rename into place: a plain copy fails with "Text file busy" if the old binary is running.
+cp "$BUILD/app/moonlight" "$OUT/moonlight.tmp" && mv -f "$OUT/moonlight.tmp" "$OUT/moonlight"
 log "Built $OUT/moonlight"
 
 # --------------------------------------------------------------------------- appimage

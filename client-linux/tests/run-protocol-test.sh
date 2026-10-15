@@ -43,10 +43,11 @@ trap 'kill $SERVER 2>/dev/null || true; rm -rf "$WORK"' EXIT
 for _ in $(seq 1 50); do curl -s -m 1 http://127.0.0.1:47989/serverinfo >/dev/null 2>&1 && break; sleep 0.2; done
 curl -s -m 1 http://127.0.0.1:47989/serverinfo >/dev/null || { echo "fake host did not start"; cat "$WORK/server.log"; exit 1; }
 
-# The CLI does not always exit on its own under a virtual display; a timeout bounds each step.
-timeout 25 "${RUN[@]}" "$CLIENT" pair 127.0.0.1 --pin "$PIN" > "$WORK/pair.log" 2>&1 || true
-timeout 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 Desktop > "$WORK/stream-desktop.log" 2>&1 || true
-timeout 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 "Test Game" > "$WORK/stream-game.log" 2>&1 || true
+# The CLI does not always exit on its own under a virtual display, and may ignore SIGTERM;
+# each step is bounded by a timeout that escalates to SIGKILL.
+timeout -k 5 25 "${RUN[@]}" "$CLIENT" pair 127.0.0.1 --pin "$PIN" > "$WORK/pair.log" 2>&1 || true
+timeout -k 5 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 Desktop > "$WORK/stream-desktop.log" 2>&1 || true
+timeout -k 5 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 "Test Game" > "$WORK/stream-game.log" 2>&1 || true
 
 python3 - "$WORK/requests.jsonl" <<'PY'
 import json, sys
