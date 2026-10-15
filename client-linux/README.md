@@ -40,6 +40,11 @@ Everything else is upstream moonlight-qt: hardware decoding through VA-API on th
 Legion Go S's AMD GPU, gamepad passthrough through SDL, HDR, 120 Hz, touch, and
 mDNS discovery of the host on the local network.
 
+The patch also turns off upstream Moonlight's update check, which would otherwise
+steer users to stock Moonlight and lose the Razer host support, and names the
+windows "Razer PC Remote Play". Settings and pairing data stay in Moonlight's
+usual locations, so switching between this client and stock Moonlight is painless.
+
 Razer ID pairing (the `razer_uuid` / `razer_pincode` flow in `src/nvhttp.cpp`) is
 **not** implemented. It needs a Razer account token from Razer's Nexus service.
 Normal PIN pairing works and is what the host falls back to.
@@ -191,6 +196,7 @@ Files touched by the patch, all under `app/` in moonlight-qt:
 - `streaming/session.cpp`: builds the Razer parameters from the preferences and
   the stream configuration.
 - `backend/nvpairingmanager.cpp`: sends `devicenickname` on the first pair request.
+- `main.cpp`, `gui/main.qml`: display name, SDL app name, no upstream update check.
 
 ## License
 

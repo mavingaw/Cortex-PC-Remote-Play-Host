@@ -286,6 +286,46 @@ index c119d15..af69fb2 100644
          GroupBox {
              id: uiSettingsGroupBox
              width: (parent.width - (parent.leftPadding + parent.rightPadding))
+diff --git a/app/gui/main.qml b/app/gui/main.qml
+index 84e7d9d..71aca91 100644
+--- a/app/gui/main.qml
++++ b/app/gui/main.qml
+@@ -369,8 +369,10 @@ ApplicationWindow {
+                 }
+ 
+                 Component.onCompleted: {
++                    // Upstream Moonlight's update check would send users to stock
++                    // Moonlight, which lacks the Razer host support. Updates for this
++                    // client come from the Cortex-PC-Remote-Play-Host repository.
+                     AutoUpdateChecker.onUpdateAvailable.connect(updateAvailable)
+-                    AutoUpdateChecker.start()
+                 }
+ 
+                 Keys.onDownPressed: {
+diff --git a/app/main.cpp b/app/main.cpp
+index 2b701d7..7b527ca 100644
+--- a/app/main.cpp
++++ b/app/main.cpp
+@@ -431,6 +431,8 @@ int main(int argc, char *argv[])
+     QCoreApplication::setOrganizationName("Moonlight Game Streaming Project");
+     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
+     QCoreApplication::setApplicationName("Moonlight");
++    // Shown in window titles and task switchers; settings paths above stay unchanged
++    QGuiApplication::setApplicationDisplayName("Razer PC Remote Play");
+ 
+     if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+         QSettings::setDefaultFormat(QSettings::IniFormat);
+@@ -715,8 +717,8 @@ int main(int argc, char *argv[])
+     // Set our app name for SDL to use with PulseAudio and PipeWire. This matches what we
+     // provide as our app name to libsoundio too. On SDL 2.0.18+, SDL_APP_NAME is also used
+     // for screensaver inhibitor reporting.
+-    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_APP_NAME, "Moonlight");
+-    SDL_SetHint(SDL_HINT_APP_NAME, "Moonlight");
++    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_APP_NAME, "Razer PC Remote Play");
++    SDL_SetHint(SDL_HINT_APP_NAME, "Razer PC Remote Play");
+ 
+     // SDL will try to lock the mouse cursor on Wayland if it's not visible in order to
+     // support applications that assume they can warp the cursor (which isn't possible
 diff --git a/app/settings/streamingpreferences.cpp b/app/settings/streamingpreferences.cpp
 index 6d143af..43f5a99 100644
 --- a/app/settings/streamingpreferences.cpp
@@ -389,7 +429,7 @@ index ad611f6..860d7b6 100644
  private:
      explicit StreamingPreferences(QQmlEngine *qmlEngine);
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
-index 40c1e59..af25770 100644
+index 40c1e59..0840813 100644
 --- a/app/streaming/session.cpp
 +++ b/app/streaming/session.cpp
 @@ -7,6 +7,8 @@
@@ -439,3 +479,12 @@ index 40c1e59..af25770 100644
                        rtspSessionUrl);
      } catch (const GfeHttpResponseException& e) {
          emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
+@@ -1843,7 +1869,7 @@ void Session::exec()
+ #ifdef Q_OS_DARWIN
+     std::string windowName = QString(m_Computer->name).toStdString();
+ #else
+-    std::string windowName = QString(m_Computer->name + " - Moonlight").toStdString();
++    std::string windowName = QString(m_Computer->name + " - Razer PC Remote Play").toStdString();
+ #endif
+ 
+     m_Window = SDL_CreateWindow(windowName.c_str(),
