@@ -54,8 +54,12 @@ curl -fsSL https://raw.githubusercontent.com/mavingaw/Cortex-PC-Remote-Play-Host
 
 That downloads the prebuilt AppImage from `dist/` to `~/Applications`, verifies its
 checksum, installs an icon and a desktop entry, and adds **Razer PC Remote Play**
-to Steam as a non-Steam game. Switch back to Game Mode and it is in your library
-under **Non-Steam**, with the Razer icon, ready to launch from Big Picture.
+to Steam as a non-Steam game with grid, hero and logo artwork from `steam-art/`.
+Switch back to Game Mode and it is in your library under **Non-Steam**, looking
+like any other game, ready to launch from Big Picture.
+
+On systems without `libfuse2` (AppImages need it to mount themselves) the
+installer unpacks the AppImage once and launches the unpacked copy instead.
 
 If Steam is running the shortcut is added live. If Steam is closed the script
 writes it into `shortcuts.vdf` directly and it appears the next time Steam starts.
@@ -102,6 +106,9 @@ That leaves `out/RazerPCRemotePlay-x86_64.AppImage`. To publish it, copy it to
 cp out/RazerPCRemotePlay-x86_64.AppImage dist/
 (cd dist && sha256sum RazerPCRemotePlay-x86_64.AppImage > SHA256SUMS)
 ```
+
+The Steam artwork is generated from the icon with `python3 scripts/make-steam-art.py`
+(needs Pillow).
 
 `./build.sh` without `--appimage` produces `out/moonlight`, which runs directly on
 any distro that has the runtime libraries installed. `./scripts/install-deps.sh`

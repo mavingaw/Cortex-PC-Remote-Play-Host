@@ -6,9 +6,10 @@
 #   curl -fsSL https://raw.githubusercontent.com/mavingaw/Cortex-PC-Remote-Play-Host/main/client-linux/install.sh | bash
 #
 # What it does:
-#   1. Downloads the AppImage to ~/Applications
+#   1. Downloads the AppImage to ~/Applications (extracted in place if the system has no FUSE)
 #   2. Installs an icon and a desktop entry (app menu in Desktop Mode)
-#   3. Adds it to Steam as a non-Steam game so it shows up in Game Mode / Big Picture
+#   3. Adds it to Steam as a non-Steam game so it shows up in Game Mode / Big Picture,
+#      with grid, hero and logo artwork
 #
 # Environment overrides:
 #   RPR_BASE_URL     where to fetch files from (default: this repo on GitHub, main branch)
@@ -22,6 +23,7 @@ BASE_URL="${RPR_BASE_URL:-https://raw.githubusercontent.com/mavingaw/Cortex-PC-R
 APPIMAGE_URL="$BASE_URL/dist/RazerPCRemotePlay-x86_64.AppImage"
 SUMS_URL="$BASE_URL/dist/SHA256SUMS"
 ICON_URL="$BASE_URL/razer-pc-remote-play.png"
+ART_URL="$BASE_URL/steam-art"
 
 INSTALL_DIR="$HOME/Applications"
 APPIMAGE="$INSTALL_DIR/RazerPCRemotePlay-x86_64.AppImage"
@@ -29,12 +31,15 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 ICON="$ICON_DIR/razer-pc-remote-play.png"
 DESKTOP_DIR="$HOME/.local/share/applications"
 DESKTOP="$DESKTOP_DIR/razer-pc-remote-play.desktop"
+EXTRACT_DIR="$INSTALL_DIR/RazerPCRemotePlay.extracted"
+ART_CACHE="$HOME/.local/share/razer-pc-remote-play/steam-art"
 
 log()  { printf '\n==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 if [ "${RPR_UNINSTALL:-0}" = 1 ]; then
   rm -f "$APPIMAGE" "$ICON" "$DESKTOP"
+  rm -rf "$EXTRACT_DIR" "$ART_CACHE"
   log "Removed $APP_NAME files. Remove the shortcut from Steam's library if you added one."
   exit 0
 fi
@@ -56,6 +61,16 @@ mv -f "$APPIMAGE.part" "$APPIMAGE"
 chmod +x "$APPIMAGE"
 log "Installed $APPIMAGE"
 
+# AppImages mount themselves with FUSE. Without libfuse2 (some Fedora-based images),
+# unpack it once and launch the unpacked tree instead.
+LAUNCH="$APPIMAGE"
+if ! { ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2' || ls /usr/lib*/libfuse.so.2 /usr/lib/*/libfuse.so.2 /lib*/libfuse.so.2 >/dev/null 2>&1; }; then
+  log "libfuse2 not found, unpacking the AppImage so it runs without FUSE"
+  rm -rf "$EXTRACT_DIR"
+  (cd "$INSTALL_DIR" && "$APPIMAGE" --appimage-extract >/dev/null && mv squashfs-root "$EXTRACT_DIR")
+  LAUNCH="$EXTRACT_DIR/AppRun"
+fi
+
 # ----------------------------------------------------------------------------- icon + desktop entry
 mkdir -p "$ICON_DIR" "$DESKTOP_DIR"
 curl -fsSL -o "$ICON" "$ICON_URL"
@@ -64,7 +79,7 @@ cat > "$DESKTOP" <<DESKTOP_EOF
 Type=Application
 Name=$APP_NAME
 Comment=Stream games from a PC running Razer PC Remote Play Host
-Exec=$APPIMAGE
+Exec=$LAUNCH
 Icon=$ICON
 Terminal=false
 Categories=Game;
@@ -73,6 +88,40 @@ DESKTOP_EOF
 chmod +x "$DESKTOP"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 log "Installed desktop entry $DESKTOP"
+
+# ----------------------------------------------------------------------------- Steam artwork
+# Steam names custom artwork after the shortcut's app id, which is derived from the
+# Exe string and the name. Install the art for every id this shortcut might get.
+shortcut_appid() { python3 -c 'import sys, zlib; print(zlib.crc32((sys.argv[1] + sys.argv[2]).encode()) | 0x80000000)' "$1" "$2"; }
+
+steam_config_dirs() {
+  for steam_root in "$HOME/.steam/steam" "$HOME/.local/share/Steam" "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam"; do
+    [ -d "$steam_root/userdata" ] || continue
+    for cfg in "$steam_root"/userdata/*/config; do
+      [ -d "$cfg" ] || continue
+      case "$cfg" in */userdata/0/config) continue ;; esac
+      echo "$cfg"
+    done
+  done | sort -u
+}
+
+install_grid_art() {   # install_grid_art <appid>...
+  command -v python3 >/dev/null || return 0
+  mkdir -p "$ART_CACHE"
+  for f in grid-portrait.png grid-landscape.png hero.png logo.png; do
+    [ -s "$ART_CACHE/$f" ] || curl -fsSL -o "$ART_CACHE/$f" "$ART_URL/$f" || { echo "artwork download failed, skipping"; return 0; }
+  done
+  local cfg id
+  while IFS= read -r cfg; do
+    mkdir -p "$cfg/grid"
+    for id in "$@"; do
+      cp -f "$ART_CACHE/grid-portrait.png"  "$cfg/grid/${id}p.png"
+      cp -f "$ART_CACHE/grid-landscape.png" "$cfg/grid/${id}.png"
+      cp -f "$ART_CACHE/hero.png"           "$cfg/grid/${id}_hero.png"
+      cp -f "$ART_CACHE/logo.png"           "$cfg/grid/${id}_logo.png"
+    done
+  done < <(steam_config_dirs)
+}
 
 # ----------------------------------------------------------------------------- Steam shortcut
 if [ "${RPR_NO_STEAM:-0}" = 1 ]; then
@@ -94,6 +143,8 @@ if steam_running; then
     [ -n "$steam_cmd" ] || fail "Steam is running but no 'steam' command was found. Add $DESKTOP to Steam manually."
     $steam_cmd -ifrunning "steam://addnonsteamgame/$(urlencode "$DESKTOP")"
   fi
+  install_grid_art "$(shortcut_appid "\"$LAUNCH\"" "$APP_NAME")" "$(shortcut_appid "$LAUNCH" "$APP_NAME")" \
+                   "$(shortcut_appid "\"$DESKTOP\"" "$APP_NAME")" "$(shortcut_appid "$DESKTOP" "$APP_NAME")"
   log "Added '$APP_NAME' to Steam. It is in your library under Non-Steam, and in Game Mode / Big Picture."
   exit 0
 fi
@@ -101,12 +152,8 @@ fi
 # Steam is not running: write the shortcut straight into shortcuts.vdf for every Steam user.
 command -v python3 >/dev/null || fail "python3 is required to write Steam shortcuts while Steam is closed. Start Steam and re-run."
 added=0
-for steam_root in "$HOME/.steam/steam" "$HOME/.local/share/Steam" "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam"; do
-  [ -d "$steam_root/userdata" ] || continue
-  for cfg in "$steam_root"/userdata/*/config; do
-    [ -d "$cfg" ] || continue
-    case "$cfg" in */userdata/0/config) continue ;; esac
-    python3 - "$cfg/shortcuts.vdf" "$APP_NAME" "$APPIMAGE" "$INSTALL_DIR" "$ICON" "$DESKTOP" <<'PY'
+while IFS= read -r cfg; do
+    python3 - "$cfg/shortcuts.vdf" "$APP_NAME" "$LAUNCH" "$INSTALL_DIR" "$ICON" "$DESKTOP" <<'PY'
 import os, struct, sys, zlib
 
 path, name, exe, start_dir, icon, desktop = sys.argv[1:7]
@@ -181,8 +228,9 @@ with open(path, "wb") as f:
 print("Added Steam shortcut to", path)
 PY
     added=$((added + 1))
-  done
-done
+done < <(steam_config_dirs)
+
+install_grid_art "$(shortcut_appid "\"$LAUNCH\"" "$APP_NAME")"
 
 if [ "$added" -gt 0 ]; then
   log "Added '$APP_NAME' to Steam for $added user(s). Start Steam: it is in your library under Non-Steam, and in Game Mode / Big Picture."
