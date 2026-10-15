@@ -10,10 +10,13 @@
 #   2. Installs an icon and a desktop entry (app menu in Desktop Mode)
 #   3. Adds it to Steam as a non-Steam game so it shows up in Game Mode / Big Picture,
 #      with grid, hero and logo artwork
+#   4. On first install, seeds handheld-friendly defaults (native 1920x1200 at 60 fps,
+#      virtual display only on the host, 150% UI scale, device name from the hardware)
 #
 # Environment overrides:
 #   RPR_BASE_URL     where to fetch files from (default: this repo on GitHub, main branch)
 #   RPR_NO_STEAM=1   skip the Steam shortcut
+#   RPR_NO_DEFAULTS=1  do not seed Moonlight.conf on first install
 #   RPR_UNINSTALL=1  remove the files this script installed (the Steam shortcut must be removed in Steam)
 
 set -euo pipefail
@@ -33,9 +36,11 @@ DESKTOP_DIR="$HOME/.local/share/applications"
 DESKTOP="$DESKTOP_DIR/razer-pc-remote-play.desktop"
 EXTRACT_DIR="$INSTALL_DIR/RazerPCRemotePlay.extracted"
 ART_CACHE="$HOME/.local/share/razer-pc-remote-play/steam-art"
+MOONLIGHT_CONF="$HOME/.config/Moonlight Game Streaming Project/Moonlight.conf"
 
 log()  { printf '\n==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
+trap 'printf "error: install failed at line %s\n" "$LINENO" >&2' ERR
 
 if [ "${RPR_UNINSTALL:-0}" = 1 ]; then
   rm -f "$APPIMAGE" "$ICON" "$DESKTOP"
@@ -88,6 +93,32 @@ DESKTOP_EOF
 chmod +x "$DESKTOP"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 log "Installed desktop entry $DESKTOP"
+
+# ----------------------------------------------------------------------------- first-run defaults
+# Only when the client has never been run: Moonlight reads what is here and fills in
+# its own defaults for everything else, so a partial file is fine.
+if [ "${RPR_NO_DEFAULTS:-0}" != 1 ] && [ ! -e "$MOONLIGHT_CONF" ]; then
+  device_name=""
+  for f in /sys/class/dmi/id/product_version /sys/class/dmi/id/product_family /sys/class/dmi/id/product_name; do
+    [ -r "$f" ] || continue
+    v="$(tr -d '\r' < "$f" | sed 's/^ *//;s/ *$//' || true)"
+    case "$v" in ""|"Default string"|"To be filled by O.E.M."|"System Product Name"|"None"|"Not Applicable") continue ;; esac
+    device_name="$v"; break
+  done
+  [ -n "$device_name" ] || device_name="$(hostname 2>/dev/null || echo Linux)"
+  mkdir -p "$(dirname "$MOONLIGHT_CONF")"
+  cat > "$MOONLIGHT_CONF" <<CONF_EOF
+[General]
+width=1920
+height=1200
+fps=60
+razerdisplaymode=2
+razeruiscale=150
+razerautoclose=300
+razernickname=$device_name
+CONF_EOF
+  log "Seeded first-run settings (1920x1200 at 60 fps, virtual display only, 150% scale, device name '$device_name')"
+fi
 
 # ----------------------------------------------------------------------------- Steam artwork
 # Steam names custom artwork after the shortcut's app id, which is derived from the

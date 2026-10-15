@@ -61,6 +61,12 @@ like any other game, ready to launch from Big Picture.
 On systems without `libfuse2` (AppImages need it to mount themselves) the
 installer unpacks the AppImage once and launches the unpacked copy instead.
 
+On a first install the client's settings are seeded with the handheld defaults
+from the section below (native 1920x1200 at 60 fps, virtual display only, 150%
+UI scale, five minute auto-close) and the device name is taken from the
+machine's hardware name, so the first stream needs no setup beyond pairing.
+Existing settings are never touched. `RPR_NO_DEFAULTS=1` skips this.
+
 If Steam is running the shortcut is added live. If Steam is closed the script
 writes it into `shortcuts.vdf` directly and it appears the next time Steam starts.
 Running the script again updates the AppImage and leaves the shortcut alone.
