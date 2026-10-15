@@ -45,7 +45,9 @@ command -v curl >/dev/null || fail "curl is required"
 # ----------------------------------------------------------------------------- AppImage
 log "Downloading $APP_NAME"
 mkdir -p "$INSTALL_DIR"
-curl -fL --progress-bar -o "$APPIMAGE.part" "$APPIMAGE_URL"
+# Resume a partial download and retry on dropped connections (the file is large).
+curl -fL --progress-bar --retry 5 --retry-delay 3 --retry-all-errors -C - \
+     -o "$APPIMAGE.part" "$APPIMAGE_URL"
 if command -v sha256sum >/dev/null && expected="$(curl -fsSL "$SUMS_URL" 2>/dev/null | awk '{print $1}')" && [ -n "$expected" ]; then
   actual="$(sha256sum "$APPIMAGE.part" | awk '{print $1}')"
   [ "$actual" = "$expected" ] || fail "checksum mismatch: expected $expected, got $actual"
