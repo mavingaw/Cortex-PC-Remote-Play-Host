@@ -44,6 +44,29 @@ Razer ID pairing (the `razer_uuid` / `razer_pincode` flow in `src/nvhttp.cpp`) i
 **not** implemented. It needs a Razer account token from Razer's Nexus service.
 Normal PIN pairing works and is what the host falls back to.
 
+## Install on the Legion Go S (one command)
+
+Switch to Desktop Mode, open Konsole, and run:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mavingaw/Cortex-PC-Remote-Play-Host/main/client-linux/install.sh | bash
+```
+
+That downloads the prebuilt AppImage from `dist/` to `~/Applications`, verifies its
+checksum, installs an icon and a desktop entry, and adds **Razer PC Remote Play**
+to Steam as a non-Steam game. Switch back to Game Mode and it is in your library
+under **Non-Steam**, with the Razer icon, ready to launch from Big Picture.
+
+If Steam is running the shortcut is added live. If Steam is closed the script
+writes it into `shortcuts.vdf` directly and it appears the next time Steam starts.
+Running the script again updates the AppImage and leaves the shortcut alone.
+
+Works the same on Bazzite and on any x86_64 Linux desktop with Steam. Set
+`RPR_NO_STEAM=1` to skip the Steam shortcut, `RPR_UNINSTALL=1` to remove the files.
+
+The AppImage takes `libva` from the system so that it uses the system's AMD
+VA-API driver for hardware decoding; everything else is bundled.
+
 ## Zero-build option
 
 If you only want to stream and do not care about the virtual display or auto-close
@@ -56,7 +79,7 @@ flatpak install flathub com.moonlight_stream.Moonlight
 Pair with a PIN, pick the desktop or a game, and go. The host streams your physical
 monitor. Come back here when you want the virtual display.
 
-## Building on the Legion Go S
+## Building it yourself
 
 SteamOS and Bazzite have read-only system partitions, so build inside a container.
 Both ship `distrobox`. From Desktop Mode, open Konsole:
@@ -72,29 +95,17 @@ cd Cortex-PC-Remote-Play-Host/client-linux
 exit
 ```
 
-That leaves `out/RazerPCRemotePlay-x86_64.AppImage`. Copy it somewhere permanent
-and make it executable:
+That leaves `out/RazerPCRemotePlay-x86_64.AppImage`. To publish it, copy it to
+`dist/` and refresh `dist/SHA256SUMS`:
 
 ```
-mkdir -p ~/Applications
-cp out/RazerPCRemotePlay-x86_64.AppImage ~/Applications/
-chmod +x ~/Applications/RazerPCRemotePlay-x86_64.AppImage
+cp out/RazerPCRemotePlay-x86_64.AppImage dist/
+(cd dist && sha256sum RazerPCRemotePlay-x86_64.AppImage > SHA256SUMS)
 ```
-
-The AppImage is self-contained apart from `libva`, which it deliberately takes from
-the system so that it loads the system's up-to-date AMD VA-API driver (the same
-choice upstream makes for its AppImage).
 
 `./build.sh` without `--appimage` produces `out/moonlight`, which runs directly on
 any distro that has the runtime libraries installed. `./scripts/install-deps.sh`
 supports apt, dnf and pacman; only the apt list has been exercised end to end.
-
-### Adding it to Steam / Game Mode
-
-In Desktop Mode, open Steam, *Games > Add a Non-Steam Game to My Library*, browse
-to the AppImage. Rename it to "Razer PC Remote Play" in its properties. It then
-appears in Game Mode like any other game and runs under gamescope. Moonlight's
-*Fullscreen* display mode is the right choice there.
 
 ## Setting up the host (Windows PC)
 
