@@ -1,0 +1,441 @@
+diff --git a/app/backend/nvhttp.cpp b/app/backend/nvhttp.cpp
+index f447b4f..0a65279 100644
+--- a/app/backend/nvhttp.cpp
++++ b/app/backend/nvhttp.cpp
+@@ -205,6 +205,7 @@ NvHTTP::startApp(QString verb,
+                  bool localAudio,
+                  int gamepadMask,
+                  bool persistGameControllersOnDisconnect,
++                 QString extraQueryParams,
+                  QString& rtspSessionUrl)
+ {
+     int riKeyId;
+@@ -234,7 +235,8 @@ NvHTTP::startApp(QString verb,
+                                    "&remoteControllersBitmap="+QString::number(gamepadMask)+
+                                    "&gcmap="+QString::number(gamepadMask)+
+                                    "&gcpersist="+QString::number(persistGameControllersOnDisconnect ? 1 : 0)+
+-                                   LiGetLaunchUrlQueryParameters(),
++                                   LiGetLaunchUrlQueryParameters()+
++                                   extraQueryParams,
+                                    LAUNCH_TIMEOUT_MS);
+ 
+     qInfo() << "Launch response:" << response;
+diff --git a/app/backend/nvhttp.h b/app/backend/nvhttp.h
+index ea70780..f69c6cc 100644
+--- a/app/backend/nvhttp.h
++++ b/app/backend/nvhttp.h
+@@ -170,6 +170,7 @@ public:
+              bool localAudio,
+              int gamepadMask,
+              bool persistGameControllersOnDisconnect,
++             QString extraQueryParams,
+              QString& rtspSessionUrl);
+ 
+     QVector<NvApp>
+diff --git a/app/backend/nvpairingmanager.cpp b/app/backend/nvpairingmanager.cpp
+index 665e7e8..ee65cf4 100644
+--- a/app/backend/nvpairingmanager.cpp
++++ b/app/backend/nvpairingmanager.cpp
+@@ -1,5 +1,8 @@
+ #include "nvpairingmanager.h"
+ #include "utils.h"
++#include "settings/streamingpreferences.h"
++
++#include <QUrl>
+ 
+ #include <stdexcept>
+ 
+@@ -239,10 +242,16 @@ NvPairingManager::pair(QString appVersion, QString pin, QSslCertificate& serverC
+     QByteArray aesKey = QCryptographicHash::hash(saltedPin, hashAlgo).constData();
+     aesKey.truncate(16);
+ 
++    // Razer PC Remote Play Host shows this name in Razer Cortex while it waits for the PIN
++    QString deviceNickname = StreamingPreferences::get()->razerDeviceNickname;
++    QString nicknameParam = deviceNickname.isEmpty() ? QString() :
++                "&devicenickname=" + QString::fromLatin1(QUrl::toPercentEncoding(deviceNickname));
++
+     QString getCert = m_Http.openConnectionToString(m_Http.m_BaseUrlHttp,
+                                                     "pair",
+                                                     "devicename=roth&updateState=1&phrase=getservercert&salt=" +
+-                                                    salt.toHex() + "&clientcert=" + IdentityManager::get()->getCertificate().toHex(),
++                                                    salt.toHex() + "&clientcert=" + IdentityManager::get()->getCertificate().toHex() +
++                                                    nicknameParam,
+                                                     0);
+     NvHTTP::verifyResponseStatus(getCert);
+     if (NvHTTP::getXmlString(getCert, "paired") != "1")
+diff --git a/app/gui/SettingsView.qml b/app/gui/SettingsView.qml
+index c119d15..af69fb2 100644
+--- a/app/gui/SettingsView.qml
++++ b/app/gui/SettingsView.qml
+@@ -1008,6 +1008,218 @@ Flickable {
+             }
+         }
+ 
++        GroupBox {
++            id: razerSettingsGroupBox
++            width: (parent.width - (parent.leftPadding + parent.rightPadding))
++            padding: 12
++            title: "<font color=\"skyblue\">" + qsTr("Razer PC Remote Play Host") + "</font>"
++            font.pointSize: 12
++
++            Column {
++                anchors.fill: parent
++                spacing: 5
++
++                Label {
++                    width: parent.width
++                    text: qsTr("These options only affect Razer PC Remote Play hosts. Other hosts ignore them.")
++                    font.pointSize: 9
++                    wrapMode: Text.Wrap
++                }
++
++                Label {
++                    width: parent.width
++                    id: razerDisplayModeTitle
++                    text: qsTr("Host display")
++                    font.pointSize: 12
++                    wrapMode: Text.Wrap
++                }
++
++                AutoResizingComboBox {
++                    function createModel() {
++                        var model = Qt.createQmlObject('import QtQuick 2.0; ListModel {}', parent, '')
++
++                        model.append({
++                                         text: qsTr("Duplicate the PC's display"),
++                                         val: StreamingPreferences.RDM_DUPLICATE_DISPLAY
++                                     })
++                        model.append({
++                                         text: qsTr("Separate virtual display (PC display stays on)"),
++                                         val: StreamingPreferences.RDM_SEPARATE_DISPLAY
++                                     })
++                        model.append({
++                                         text: qsTr("Virtual display only (PC display turns off)"),
++                                         val: StreamingPreferences.RDM_CLIENT_ONLY_DISPLAY
++                                     })
++
++                        return model
++                    }
++
++                    function reinitialize() {
++                        model = createModel()
++                        currentIndex = 0
++
++                        var saved = StreamingPreferences.razerDisplayMode
++                        for (var i = 0; i < model.count; i++) {
++                            if (model.get(i).val === saved) {
++                                currentIndex = i
++                                break
++                            }
++                        }
++
++                        activated(currentIndex)
++                    }
++
++                    Component.onCompleted: {
++                        reinitialize()
++                        languageChanged.connect(reinitialize)
++                    }
++
++                    id: razerDisplayModeComboBox
++                    hoverEnabled: true
++                    textRole: "text"
++                    onActivated: {
++                        StreamingPreferences.razerDisplayMode = model.get(currentIndex).val
++                    }
++
++                    ToolTip.delay: 1000
++                    ToolTip.timeout: 5000
++                    ToolTip.visible: hovered
++                    ToolTip.text: qsTr("A virtual display is created on the host at the exact resolution and frame rate you stream at, so the picture is not letterboxed or scaled. Requires the Razer virtual display driver installed by Razer Cortex.")
++                }
++
++                Label {
++                    width: parent.width
++                    id: razerUiScaleTitle
++                    text: qsTr("Virtual display UI scale")
++                    font.pointSize: 12
++                    wrapMode: Text.Wrap
++                    visible: razerDisplayModeComboBox.currentIndex !== 0
++                }
++
++                AutoResizingComboBox {
++                    function createModel() {
++                        var model = Qt.createQmlObject('import QtQuick 2.0; ListModel {}', parent, '')
++
++                        model.append({ text: qsTr("Host default"), val: -1 })
++                        model.append({ text: "100%", val: 100 })
++                        model.append({ text: "125%", val: 125 })
++                        model.append({ text: "150%", val: 150 })
++                        model.append({ text: "175%", val: 175 })
++                        model.append({ text: "200%", val: 200 })
++
++                        return model
++                    }
++
++                    function reinitialize() {
++                        model = createModel()
++                        currentIndex = 0
++
++                        var saved = StreamingPreferences.razerUiScale
++                        for (var i = 0; i < model.count; i++) {
++                            if (model.get(i).val === saved) {
++                                currentIndex = i
++                                break
++                            }
++                        }
++
++                        activated(currentIndex)
++                    }
++
++                    Component.onCompleted: {
++                        reinitialize()
++                        languageChanged.connect(reinitialize)
++                    }
++
++                    id: razerUiScaleComboBox
++                    visible: razerDisplayModeComboBox.currentIndex !== 0
++                    hoverEnabled: true
++                    textRole: "text"
++                    onActivated: {
++                        StreamingPreferences.razerUiScale = model.get(currentIndex).val
++                    }
++
++                    ToolTip.delay: 1000
++                    ToolTip.timeout: 5000
++                    ToolTip.visible: hovered
++                    ToolTip.text: qsTr("Windows text and UI scaling applied to the virtual display. 150% is a good fit for an 8 inch 1920x1200 screen.")
++                }
++
++                Label {
++                    width: parent.width
++                    id: razerAutoCloseTitle
++                    text: qsTr("Close the game after disconnecting")
++                    font.pointSize: 12
++                    wrapMode: Text.Wrap
++                }
++
++                AutoResizingComboBox {
++                    function createModel() {
++                        var model = Qt.createQmlObject('import QtQuick 2.0; ListModel {}', parent, '')
++
++                        model.append({ text: qsTr("Never"), val: -1 })
++                        model.append({ text: qsTr("Immediately"), val: 0 })
++                        model.append({ text: qsTr("After 1 minute"), val: 60 })
++                        model.append({ text: qsTr("After 5 minutes"), val: 300 })
++                        model.append({ text: qsTr("After 15 minutes"), val: 900 })
++                        model.append({ text: qsTr("After 30 minutes"), val: 1800 })
++
++                        return model
++                    }
++
++                    function reinitialize() {
++                        model = createModel()
++                        currentIndex = 0
++
++                        var saved = StreamingPreferences.razerAutoCloseSeconds
++                        for (var i = 0; i < model.count; i++) {
++                            if (model.get(i).val === saved) {
++                                currentIndex = i
++                                break
++                            }
++                        }
++
++                        activated(currentIndex)
++                    }
++
++                    Component.onCompleted: {
++                        reinitialize()
++                        languageChanged.connect(reinitialize)
++                    }
++
++                    id: razerAutoCloseComboBox
++                    hoverEnabled: true
++                    textRole: "text"
++                    onActivated: {
++                        StreamingPreferences.razerAutoCloseSeconds = model.get(currentIndex).val
++                    }
++
++                    ToolTip.delay: 1000
++                    ToolTip.timeout: 5000
++                    ToolTip.visible: hovered
++                    ToolTip.text: qsTr("If the stream drops or you quit without closing the game, the host waits this long for you to reconnect before closing the game. You will lose any unsaved progress!")
++                }
++
++                Label {
++                    width: parent.width
++                    id: razerNicknameTitle
++                    text: qsTr("Device name shown in Razer Cortex")
++                    font.pointSize: 12
++                    wrapMode: Text.Wrap
++                }
++
++                TextField {
++                    id: razerNicknameField
++                    width: Math.min(parent.width, 400)
++                    font.pointSize: 12
++                    text: StreamingPreferences.razerDeviceNickname
++                    placeholderText: qsTr("Legion Go S")
++                    onEditingFinished: {
++                        StreamingPreferences.razerDeviceNickname = text
++                    }
++                }
++            }
++        }
++
+         GroupBox {
+             id: uiSettingsGroupBox
+             width: (parent.width - (parent.leftPadding + parent.rightPadding))
+diff --git a/app/settings/streamingpreferences.cpp b/app/settings/streamingpreferences.cpp
+index 6d143af..43f5a99 100644
+--- a/app/settings/streamingpreferences.cpp
++++ b/app/settings/streamingpreferences.cpp
+@@ -7,6 +7,7 @@
+ #include <QLocale>
+ #include <QReadWriteLock>
+ #include <QtMath>
++#include <QSysInfo>
+ 
+ #include <QtDebug>
+ 
+@@ -52,6 +53,10 @@
+ #define SER_KEEPAWAKE "keepawake"
+ #define SER_LANGUAGE "language"
+ #define SER_RENDERER "renderer"
++#define SER_RAZERDISPLAYMODE "razerdisplaymode"
++#define SER_RAZERAUTOCLOSE "razerautoclose"
++#define SER_RAZERUISCALE "razeruiscale"
++#define SER_RAZERNICKNAME "razernickname"
+ 
+ #define CURRENT_DEFAULT_VER 2
+ 
+@@ -135,6 +140,11 @@ void StreamingPreferences::reload()
+     multiController = settings.value(SER_MULTICONT, true).toBool();
+     enableMdns = settings.value(SER_MDNS, true).toBool();
+     quitAppAfter = settings.value(SER_QUITAPPAFTER, false).toBool();
++    razerDisplayMode = static_cast<RazerDisplayMode>(settings.value(SER_RAZERDISPLAYMODE,
++                                                                    static_cast<int>(RazerDisplayMode::RDM_DUPLICATE_DISPLAY)).toInt());
++    razerAutoCloseSeconds = settings.value(SER_RAZERAUTOCLOSE, -1).toInt();
++    razerUiScale = settings.value(SER_RAZERUISCALE, -1).toInt();
++    razerDeviceNickname = settings.value(SER_RAZERNICKNAME, QSysInfo::machineHostName()).toString();
+     absoluteMouseMode = settings.value(SER_ABSMOUSEMODE, false).toBool();
+     absoluteTouchMode = settings.value(SER_ABSTOUCHMODE, true).toBool();
+     framePacing = settings.value(SER_FRAMEPACING, false).toBool();
+@@ -335,6 +345,10 @@ void StreamingPreferences::save()
+     settings.setValue(SER_MULTICONT, multiController);
+     settings.setValue(SER_MDNS, enableMdns);
+     settings.setValue(SER_QUITAPPAFTER, quitAppAfter);
++    settings.setValue(SER_RAZERDISPLAYMODE, static_cast<int>(razerDisplayMode));
++    settings.setValue(SER_RAZERAUTOCLOSE, razerAutoCloseSeconds);
++    settings.setValue(SER_RAZERUISCALE, razerUiScale);
++    settings.setValue(SER_RAZERNICKNAME, razerDeviceNickname);
+     settings.setValue(SER_ABSMOUSEMODE, absoluteMouseMode);
+     settings.setValue(SER_ABSTOUCHMODE, absoluteTouchMode);
+     settings.setValue(SER_FRAMEPACING, framePacing);
+diff --git a/app/settings/streamingpreferences.h b/app/settings/streamingpreferences.h
+index ad611f6..860d7b6 100644
+--- a/app/settings/streamingpreferences.h
++++ b/app/settings/streamingpreferences.h
+@@ -119,6 +119,16 @@ public:
+     };
+     Q_ENUM(CaptureSysKeysMode);
+ 
++    // How a Razer PC Remote Play host should present the stream.
++    // The numeric values are sent as the "virtualDisplay" launch parameter.
++    enum RazerDisplayMode
++    {
++        RDM_DUPLICATE_DISPLAY,   // 0: stream the host's physical display
++        RDM_SEPARATE_DISPLAY,    // 1: host adds a virtual display next to its own
++        RDM_CLIENT_ONLY_DISPLAY  // 2: host adds a virtual display and turns its own off
++    };
++    Q_ENUM(RazerDisplayMode);
++
+     Q_PROPERTY(int width MEMBER width NOTIFY displayModeChanged)
+     Q_PROPERTY(int height MEMBER height NOTIFY displayModeChanged)
+     Q_PROPERTY(int fps MEMBER fps NOTIFY displayModeChanged)
+@@ -157,6 +167,10 @@ public:
+     Q_PROPERTY(bool keepAwake MEMBER keepAwake NOTIFY keepAwakeChanged)
+     Q_PROPERTY(CaptureSysKeysMode captureSysKeysMode MEMBER captureSysKeysMode NOTIFY captureSysKeysModeChanged)
+     Q_PROPERTY(Language language MEMBER language NOTIFY languageChanged);
++    Q_PROPERTY(RazerDisplayMode razerDisplayMode MEMBER razerDisplayMode NOTIFY razerDisplayModeChanged)
++    Q_PROPERTY(int razerAutoCloseSeconds MEMBER razerAutoCloseSeconds NOTIFY razerAutoCloseSecondsChanged)
++    Q_PROPERTY(int razerUiScale MEMBER razerUiScale NOTIFY razerUiScaleChanged)
++    Q_PROPERTY(QString razerDeviceNickname MEMBER razerDeviceNickname NOTIFY razerDeviceNicknameChanged)
+ 
+     Q_INVOKABLE bool retranslate();
+ 
+@@ -201,6 +215,12 @@ public:
+     CaptureSysKeysMode captureSysKeysMode;
+     RendererSelection rendererSelection;
+ 
++    // Razer PC Remote Play host options (ignored by other hosts)
++    RazerDisplayMode razerDisplayMode;
++    int razerAutoCloseSeconds;   // -1 = never, 0 = immediately, N = seconds after disconnect
++    int razerUiScale;            // Windows UI scale percent for the virtual display, -1 = host default
++    QString razerDeviceNickname; // Name shown in Razer Cortex for this client
++
+ signals:
+     void displayModeChanged();
+     void bitrateChanged();
+@@ -238,6 +258,10 @@ signals:
+     void keepAwakeChanged();
+     void languageChanged();
+     void rendererSelectionChanged();
++    void razerDisplayModeChanged();
++    void razerAutoCloseSecondsChanged();
++    void razerUiScaleChanged();
++    void razerDeviceNicknameChanged();
+ 
+ private:
+     explicit StreamingPreferences(QQmlEngine *qmlEngine);
+diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
+index 40c1e59..af25770 100644
+--- a/app/streaming/session.cpp
++++ b/app/streaming/session.cpp
+@@ -7,6 +7,8 @@
+ #include "SDL_compat.h"
+ #include "utils.h"
+ 
++#include <QUrl>
++
+ #ifdef HAVE_FFMPEG
+ #include "video/ffmpeg.h"
+ #endif
+@@ -1609,6 +1611,29 @@ bool Session::startConnectionAsync()
+ 
+     QString rtspSessionUrl;
+ 
++    // Extra launch parameters understood by Razer PC Remote Play Host.
++    // Sunshine and GeForce Experience ignore unknown parameters, so these
++    // are safe to send to any host.
++    QString razerLaunchParams;
++    razerLaunchParams += "&virtualDisplay=" + QString::number(static_cast<int>(m_Preferences->razerDisplayMode));
++    if (m_Preferences->razerDisplayMode != StreamingPreferences::RDM_DUPLICATE_DISPLAY) {
++        // Ask the host to create the virtual display at exactly the streamed mode
++        razerLaunchParams += "&virtualDisplayMode=" +
++                QString::number(m_StreamConfig.width) + "x" +
++                QString::number(m_StreamConfig.height) + "x" +
++                QString::number(m_StreamConfig.fps);
++        if (m_Preferences->razerUiScale > 0) {
++            razerLaunchParams += "&UIscale=" + QString::number(m_Preferences->razerUiScale);
++        }
++    }
++    // The host always closes the Desktop "app" immediately; the countdown only applies to games
++    razerLaunchParams += "&timeToTerminateApp=" +
++            QString::number(m_App.name == "Desktop" ? 0 : m_Preferences->razerAutoCloseSeconds);
++    if (!m_Preferences->razerDeviceNickname.isEmpty()) {
++        razerLaunchParams += "&devicenickname=" +
++                QString::fromLatin1(QUrl::toPercentEncoding(m_Preferences->razerDeviceNickname));
++    }
++
+     try {
+         NvHTTP http(m_Computer);
+         http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
+@@ -1618,6 +1643,7 @@ bool Session::startConnectionAsync()
+                       m_Preferences->playAudioOnHost,
+                       m_InputHandler->getAttachedGamepadMask(),
+                       !m_Preferences->multiController,
++                      razerLaunchParams,
+                       rtspSessionUrl);
+     } catch (const GfeHttpResponseException& e) {
+         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
