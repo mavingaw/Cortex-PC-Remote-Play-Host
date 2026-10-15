@@ -169,7 +169,7 @@ tests/run-protocol-test.sh                 # tests ./out/moonlight
 tests/run-protocol-test.sh ~/Applications/RazerPCRemotePlay-x86_64.AppImage
 ```
 
-It needs `python3` with the `cryptography` module, `curl`, and `xvfb-run` when
+It needs `python3` with the `cryptography` module, `curl`, and `Xvfb` when
 there is no display. Run it after rebasing the patch onto a newer upstream.
 
 `tests/run-installer-test.sh` exercises `install.sh` in a scratch home with no

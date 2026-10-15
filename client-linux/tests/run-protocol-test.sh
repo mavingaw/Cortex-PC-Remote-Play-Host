@@ -10,7 +10,7 @@
 #   tests/run-protocol-test.sh [path to moonlight binary, AppRun or AppImage]
 #
 # Defaults to ./out/moonlight. Needs python3 with the 'cryptography' module, curl, and
-# xvfb-run when there is no display. Nothing is streamed: the fake host points the
+# Xvfb when there is no display. Nothing is streamed: the fake host points the
 # client at a closed RTSP port, so each launch fails right after the request we check.
 
 set -euo pipefail
@@ -34,20 +34,28 @@ razerautoclose=300
 razernickname=Test Handheld
 CONF
 
-RUN=()
-[ -n "${DISPLAY:-}" ] || RUN=(xvfb-run -a -s "-screen 0 1920x1200x24")
+# One virtual display for the whole run, so the timeouts below hit the client itself
+# rather than an xvfb-run wrapper (which would leave the client running).
+XVFB=""
+if [ -z "${DISPLAY:-}" ]; then
+  command -v Xvfb >/dev/null || { echo "no DISPLAY and Xvfb is not installed" >&2; exit 2; }
+  Xvfb :99 -screen 0 1920x1200x24 > /dev/null 2>&1 &
+  XVFB=$!
+  export DISPLAY=:99
+  sleep 1
+fi
 
 python3 "$HERE/fake_host.py" "$WORK" "$PIN" > "$WORK/server.log" 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap 'kill $SERVER 2>/dev/null || true; [ -n "$XVFB" ] && kill $XVFB 2>/dev/null || true; rm -rf "$WORK"' EXIT
 for _ in $(seq 1 50); do curl -s -m 1 http://127.0.0.1:47989/serverinfo >/dev/null 2>&1 && break; sleep 0.2; done
 curl -s -m 1 http://127.0.0.1:47989/serverinfo >/dev/null || { echo "fake host did not start"; cat "$WORK/server.log"; exit 1; }
 
 # The CLI does not always exit on its own under a virtual display, and may ignore SIGTERM;
 # each step is bounded by a timeout that escalates to SIGKILL.
-timeout -k 5 25 "${RUN[@]}" "$CLIENT" pair 127.0.0.1 --pin "$PIN" > "$WORK/pair.log" 2>&1 || true
-timeout -k 5 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 Desktop > "$WORK/stream-desktop.log" 2>&1 || true
-timeout -k 5 25 "${RUN[@]}" "$CLIENT" stream 127.0.0.1 "Test Game" > "$WORK/stream-game.log" 2>&1 || true
+timeout -k 5 25 "$CLIENT" pair 127.0.0.1 --pin "$PIN" > "$WORK/pair.log" 2>&1 || true
+timeout -k 5 25 "$CLIENT" stream 127.0.0.1 Desktop > "$WORK/stream-desktop.log" 2>&1 || true
+timeout -k 5 25 "$CLIENT" stream 127.0.0.1 "Test Game" > "$WORK/stream-game.log" 2>&1 || true
 
 python3 - "$WORK/requests.jsonl" <<'PY'
 import json, sys
