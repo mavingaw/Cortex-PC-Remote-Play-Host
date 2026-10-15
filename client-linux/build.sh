@@ -78,11 +78,11 @@ fi
 # --------------------------------------------------------------------------- build
 mkdir -p "$BUILD" "$OUT"
 log "Configuring"
-QMAKE_ARGS=(CONFIG+=release)
+QMAKE_ARGS=("CONFIG+=release")
 if [ "$APPIMAGE" = 1 ]; then
   # Same choices as upstream's scripts/build-appimage.sh: Wayland support drags an
   # old libwayland-client into the image, and linuxdeploy cannot bundle EGLFS/DRM.
-  QMAKE_ARGS+=(CONFIG+=disable-wayland CONFIG+=disable-libdrm PREFIX="$WORK/deploy/usr" DEFINES+=APP_IMAGE)
+  QMAKE_ARGS+=("CONFIG+=disable-wayland" "CONFIG+=disable-libdrm" "PREFIX=$WORK/deploy/usr" "DEFINES+=APP_IMAGE")
 fi
 (cd "$BUILD" && qmake6 "$SRC/moonlight-qt.pro" "${QMAKE_ARGS[@]}")
 
@@ -115,7 +115,8 @@ if [ "$APPIMAGE" = 1 ]; then
   export QML_SOURCES_PATHS="$SRC/app/gui"
   export APPIMAGE_EXTRACT_AND_RUN=1          # works without FUSE (containers, distrobox)
   export OUTPUT="RazerPCRemotePlay-$ARCH.AppImage"
-  export VERSION="$(cat "$SRC/app/version.txt")-razer"
+  VERSION="$(cat "$SRC/app/version.txt")-razer"
+  export VERSION
   (cd "$OUT" && linuxdeploy --appdir "$WORK/deploy" --plugin qt \
       --exclude-library='libva.so*' --exclude-library='libva-drm.so*' \
       --exclude-library='libva-wayland.so*' --exclude-library='libva-x11.so*' \
