@@ -151,6 +151,22 @@ In the client's settings page:
 - **Video decoder**: leave on *Automatic*. Check the performance overlay
   (Ctrl+Alt+Shift+S during a stream) says VAAPI, not software.
 
+## Testing against a fake host
+
+No Windows host is needed to check the protocol. `tests/fake_host.py` implements
+the host's pairing handshake exactly as `src/nvhttp.cpp` and `src/crypto.cpp` do,
+plus `/serverinfo`, `/applist` and `/launch`. The runner pairs the client with it
+through the CLI, launches Desktop and a game, and asserts that the requests carry
+the Razer parameters:
+
+```
+tests/run-protocol-test.sh                 # tests ./out/moonlight
+tests/run-protocol-test.sh ~/Applications/RazerPCRemotePlay-x86_64.AppImage
+```
+
+It needs `python3` with the `cryptography` module, `curl`, and `xvfb-run` when
+there is no display. Run it after rebasing the patch onto a newer upstream.
+
 ## Working on the patch
 
 ```
