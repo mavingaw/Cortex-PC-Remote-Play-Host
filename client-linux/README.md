@@ -28,6 +28,7 @@ section to Moonlight's settings page and sends them:
 | Virtual display UI scale | `UIscale=150` | Windows text/UI scaling on the virtual display. |
 | Close the game after disconnecting | `timeToTerminateApp=300` | Countdown (seconds) before the host closes the game after the stream drops. `-1` never, `0` immediately. Desktop is always closed immediately. |
 | Device name shown in Razer Cortex | `devicenickname=...` | Name Razer Cortex shows while waiting for your PIN and in its session list. Also sent on the first `/pair` request. |
+| (automatic) | reads `CustomImagePath`, `GamePlatform` from `/applist` | Games synced from the Razer Cortex library carry remote box art the host cannot serve through `/appasset`; the client downloads it directly, and shows the launcher (Steam, Epic, Xbox, ...) in the tile tooltip. |
 
 The virtual display mode is derived from the resolution and FPS you pick in
 Moonlight's normal *Basic Settings*, so the host's virtual display always matches
@@ -67,7 +68,7 @@ On systems without `libfuse2` (AppImages need it to mount themselves) the
 installer unpacks the AppImage once and launches the unpacked copy instead.
 
 On a first install the client's settings are seeded with the handheld defaults
-from the section below (native 1920x1200 at 60 fps, virtual display only, 150%
+from the section below (native 1920x1200 at 120 fps, virtual display only, 150%
 UI scale, five minute auto-close) and the device name is taken from the
 machine's hardware name, so the first stream needs no setup beyond pairing.
 Existing settings are never touched. `RPR_NO_DEFAULTS=1` skips this.
@@ -81,6 +82,27 @@ Works the same on Bazzite and on any x86_64 Linux desktop with Steam. Set
 
 The AppImage takes `libva` from the system so that it uses the system's AMD
 VA-API driver for hardware decoding; everything else is bundled.
+
+## How this compares with Razer's Windows client
+
+Razer publishes the Windows client's source as
+[Cortex-PC-Remote-Play-Client](https://github.com/razerofficial/Cortex-PC-Remote-Play-Client).
+It is also a moonlight-qt fork, but a headless one: it has no UI of its own and is
+driven by Razer Cortex over a local HTTP API (host list, add and remove hosts, pair,
+app list and hide, stream, quit, settings, screen info). Everything that API exposes is
+something stock Moonlight's own UI already does, so this client reaches parity by
+sending the same Razer parameters the Windows engine sends:
+
+| Windows engine | This client |
+|---|---|
+| `virtualDisplay`, `virtualDisplayMode` from the primary monitor | Same parameters, mode taken from the chosen stream resolution and FPS |
+| `timeToTerminateApp` | Same, with a settings dropdown |
+| `devicenickname` on pair and launch | Same |
+| Cortex library box art fetched from `CustomImagePath` by the Cortex UI | Fetched by the client's box art cache |
+| HDR | Upstream Moonlight's HDR support (needs an HDR display and Wayland HDR output) |
+| Virtual speaker (host side) | Nothing to do on the client; "Play audio on host PC" maps to the same launch flag |
+| Razer ID pairing | **Not available.** The Windows engine gets a Razer account token from Cortex's login and exchanges it with Razer's Nexus service for a pairing secret. There is no public way to obtain that token outside Razer Cortex. PIN pairing works with every host setting, including "Manual" and "Automatic" Razer ID modes. |
+| Exits when Cortex exits, Cortex heartbeat | Not applicable |
 
 ## Zero-build option
 
@@ -143,7 +165,7 @@ supports apt, dnf and pacman; only the apt list has been exercised end to end.
 In the client's settings page:
 
 - **Resolution**: 1920x1200 (the native panel). Use *Custom* if it is not listed.
-- **Frame rate**: 120 if the host GPU keeps up, otherwise 90 or 60.
+- **Frame rate**: 120, the panel's native refresh rate (the installer's default). Drop to 90 or 60 if the host GPU or the Wi-Fi cannot keep up.
 - **Bitrate**: 20 to 40 Mbps on 5 GHz Wi-Fi, more on Ethernet.
 - **Video codec**: HEVC. AV1 if the host GPU encodes it (RTX 40 / RX 7000 or
   newer) and you want lower bitrate at the same quality.
@@ -197,6 +219,7 @@ Files touched by the patch, all under `app/` in moonlight-qt:
   the stream configuration.
 - `backend/nvpairingmanager.cpp`: sends `devicenickname` on the first pair request.
 - `main.cpp`, `gui/main.qml`: display name, SDL app name, no upstream update check.
+- `backend/nvapp.{h,cpp}`, `backend/boxartmanager.{h,cpp}`, `gui/appmodel.{h,cpp}`, `gui/AppView.qml`: Cortex library box art URL and platform.
 
 ## License
 

@@ -10,7 +10,7 @@
 #   2. Installs an icon and a desktop entry (app menu in Desktop Mode)
 #   3. Adds it to Steam as a non-Steam game so it shows up in Game Mode / Big Picture,
 #      with grid, hero and logo artwork
-#   4. On first install, seeds handheld-friendly defaults (native 1920x1200 at 60 fps,
+#   4. On first install, seeds handheld-friendly defaults (native 1920x1200 at 120 fps,
 #      virtual display only on the host, 150% UI scale, device name from the hardware)
 #
 # Environment overrides:
@@ -111,13 +111,13 @@ if [ "${RPR_NO_DEFAULTS:-0}" != 1 ] && [ ! -e "$MOONLIGHT_CONF" ]; then
 [General]
 width=1920
 height=1200
-fps=60
+fps=120
 razerdisplaymode=2
 razeruiscale=150
 razerautoclose=300
 razernickname=$device_name
 CONF_EOF
-  log "Seeded first-run settings (1920x1200 at 60 fps, virtual display only, 150% scale, device name '$device_name')"
+  log "Seeded first-run settings (1920x1200 at 120 fps, virtual display only, 150% scale, device name '$device_name')"
 fi
 
 # ----------------------------------------------------------------------------- Steam artwork

@@ -9,7 +9,7 @@ URL on a closed port, so the client fails right after the launch request.
 
 usage: fake_host.py <workdir> <pin>
 """
-import datetime, hashlib, http.server, json, os, secrets, ssl, sys, threading, urllib.parse, uuid
+import base64, datetime, hashlib, http.server, json, os, secrets, ssl, sys, threading, urllib.parse, uuid
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -45,6 +45,10 @@ def ecb_encrypt(keyb, data):
     e = ecb(keyb).encryptor(); return e.update(data) + e.finalize()
 def ecb_decrypt(keyb, data):
     d = ecb(keyb).decryptor(); return d.update(data) + d.finalize()
+# 1x1 green PNG used as remote "Cortex library" box art
+TEST_ART_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
 def xml(fields, status=200, msg=None):
     body = "".join(f"<{k}>{v}</{k}>" for k, v in fields.items())
     attrs = f' status_code="{status}"' + (f' status_message="{msg}"' if msg else "")
@@ -64,9 +68,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body = self.route(u.path, args, https)
         except Exception as e:  # noqa
             body = xml({}, 500, f"exception: {e!r}")
-        data = body.encode()
+        if body is None:
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        data = body if isinstance(body, bytes) else body.encode()
         self.send_response(200)
-        self.send_header("Content-Type", "text/xml")
+        self.send_header("Content-Type", "image/png" if isinstance(body, bytes) else "text/xml")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -84,9 +93,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/pair":
             return self.pair(args, https)
         if path == "/applist":
+            # Like the real host: a Cortex library game carries a remote CustomImagePath
+            # and a GamePlatform, and /appasset has nothing for it.
             return ('<?xml version="1.0" encoding="utf-8"?><root protocol_version="0.1" status_code="200">'
                     '<App><IsHdrSupported>0</IsHdrSupported><AppTitle>Desktop</AppTitle><ID>1</ID></App>'
-                    '<App><IsHdrSupported>0</IsHdrSupported><AppTitle>Test Game</AppTitle><ID>2</ID></App></root>')
+                    '<App><IsHdrSupported>0</IsHdrSupported><AppTitle>Test Game</AppTitle><ID>2</ID>'
+                    f'<CustomImagePath>http://127.0.0.1:{HTTP_PORT}/testart.png</CustomImagePath>'
+                    '<GamePlatform>Steam</GamePlatform></App></root>')
+        if path == "/appasset":
+            return None   # 204, as the host answers when the image path does not exist
+        if path == "/testart.png":
+            return TEST_ART_PNG
         if path in ("/launch", "/resume"):
             return xml({"sessionUrl0": "rtsp://127.0.0.1:1", "gamesession": 1})
         if path in ("/cancel", "/unpair"):
