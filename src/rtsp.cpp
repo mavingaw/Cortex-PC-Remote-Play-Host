@@ -26,7 +26,9 @@ extern "C" {
 #include "video.h"
 
 #include <unordered_map>
+#if RAZER_MOD == 1
 #include "RazerState.h"
+#endif
 
 namespace asio = boost::asio;
 
@@ -1132,9 +1134,10 @@ namespace rtsp_stream {
     boost::system::error_code ec;
     if (server.bind(net::af_from_enum_string(config::sunshine.address_family), net::map_port(rtsp_stream::RTSP_SETUP_PORT), ec)) {
       BOOST_LOG(fatal) << "Couldn't bind RTSP server to port ["sv << net::map_port(rtsp_stream::RTSP_SETUP_PORT) << "], " << ec.message();
+#if RAZER_MOD == 1
       rz_state::message_state_t tmpmsg;
       rz_state::SendEventToCortex(rz_state::CortexEvent::Cortex_Event_Change_HTTP_Port, tmpmsg);
-      //BOOST_LOG(fatal) << "end of calling event";
+#endif
 
       shutdown_event->raise(true);
 

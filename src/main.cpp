@@ -17,6 +17,8 @@
 #include "main.h"
 #include "nvhttp.h"
 #include "process.h"
+#include <filesystem>
+
 #include "system_tray.h"
 #include "upnp.h"
 #include "version.h"
@@ -82,10 +84,17 @@ SessionMonitorWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 #endif
 
 std::string GetExecutablePath() {
+#ifdef _WIN32
     char buffer[MAX_PATH];
     GetModuleFileName(NULL, buffer, MAX_PATH);
-    std::string::size_type pos = std::string(buffer).find_last_of("\\/");
-    return std::string(buffer).substr(0, pos);
+    std::string path(buffer);
+#else
+    std::error_code ec;
+    std::string path = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    if (ec) path = ".";
+#endif
+    std::string::size_type pos = path.find_last_of("\\/");
+    return pos == std::string::npos ? std::string(".") : path.substr(0, pos);
 }
 
 #if RAZER_MOD == 1
