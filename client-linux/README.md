@@ -160,6 +160,28 @@ supports apt, dnf and pacman; only the apt list has been exercised end to end.
 4. Select the host and enter the PIN Razer Cortex shows. Cortex displays the
    device name you set in the client's settings.
 
+### Hosting from a Windows gaming VM
+
+The host works in a VM as long as the VM looks like a real gaming PC to it:
+
+- **A passed-through GPU.** The host only does hardware encoding (NVENC, AMD VCE or
+  Intel QuickSync); a virtual GPU or software rendering fails with a capture or
+  encoding error. The Razer virtual display driver also binds to that GPU.
+- **Bridged networking**, so the VM has an address on the same LAN as the Legion Go
+  S. NAT networking hides the VM: automatic discovery (mDNS) will not see it and the
+  stream ports will not be reachable without port forwards. With bridged networking
+  the client finds it on its own; otherwise add it by the VM's IP.
+- **Ports open in the VM's Windows firewall**: TCP 47984, 47989, 48010 and UDP
+  47998 to 48000. The Razer installer normally adds these rules; if the client can
+  see the host but pairing or streaming stalls, check them.
+- **No monitor needed.** Use *Virtual display only* on the client (the installer's
+  default); the host creates a 1920x1200 display for the session and tears it down
+  afterwards. If the VM has a dummy plug or a passed-through monitor, *Duplicate* also
+  works.
+- **Razer Cortex must be running** in the VM with *Remote Play > Run as Host >
+  Start Hosting* on, since Cortex owns the virtual display and the pairing prompt.
+  Leave *Razer ID pairing* on *Automatic* or *Manual*; PIN pairing works in either.
+
 ## Recommended settings for the Legion Go S
 
 In the client's settings page:
