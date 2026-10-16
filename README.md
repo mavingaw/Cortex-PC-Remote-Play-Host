@@ -52,6 +52,17 @@ Then, use the files you compiled to overwrite files that in this directory.
 
 And, Click **START HOSTING** button in **REMOTE PLAY** - **RUN AS HOST**.
 
+## Linux client (Legion Go S, SteamOS, Bazzite)
+
+A Linux client built on moonlight-qt with this host's extra features (virtual
+display, UI scale, auto-close, device name in Razer Cortex) lives in
+[`client-linux/`](client-linux/README.md). One command installs it and adds it to
+Steam so it shows up in Game Mode / Big Picture:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mavingaw/Cortex-PC-Remote-Play-Host/main/client-linux/install.sh | bash
+```
+
 ## Support
 
 For additional information, refer to the [Razer Cortex FAQ](https://mysupport.razer.com/app/answers/detail/a_id/6104/~/razer-cortex-10-support-%26-faqs).

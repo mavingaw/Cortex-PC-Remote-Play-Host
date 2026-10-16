@@ -28,6 +28,7 @@ section to Moonlight's settings page and sends them:
 | Virtual display UI scale | `UIscale=150` | Windows text/UI scaling on the virtual display. |
 | Close the game after disconnecting | `timeToTerminateApp=300` | Countdown (seconds) before the host closes the game after the stream drops. `-1` never, `0` immediately. Desktop is always closed immediately. |
 | Device name shown in Razer Cortex | `devicenickname=...` | Name Razer Cortex shows while waiting for your PIN and in its session list. Also sent on the first `/pair` request. |
+| (automatic) | reads `CustomImagePath`, `GamePlatform` from `/applist` | Games synced from the Razer Cortex library carry remote box art the host cannot serve through `/appasset`; the client downloads it directly, and shows the launcher (Steam, Epic, Xbox, ...) in the tile tooltip. |
 
 The virtual display mode is derived from the resolution and FPS you pick in
 Moonlight's normal *Basic Settings*, so the host's virtual display always matches
@@ -40,9 +41,68 @@ Everything else is upstream moonlight-qt: hardware decoding through VA-API on th
 Legion Go S's AMD GPU, gamepad passthrough through SDL, HDR, 120 Hz, touch, and
 mDNS discovery of the host on the local network.
 
+The patch also turns off upstream Moonlight's update check, which would otherwise
+steer users to stock Moonlight and lose the Razer host support, and names the
+windows "Razer PC Remote Play". Settings and pairing data stay in Moonlight's
+usual locations, so switching between this client and stock Moonlight is painless.
+
 Razer ID pairing (the `razer_uuid` / `razer_pincode` flow in `src/nvhttp.cpp`) is
 **not** implemented. It needs a Razer account token from Razer's Nexus service.
 Normal PIN pairing works and is what the host falls back to.
+
+## Install on the Legion Go S (one command)
+
+Switch to Desktop Mode, open Konsole, and run:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mavingaw/Cortex-PC-Remote-Play-Host/main/client-linux/install.sh | bash
+```
+
+That downloads the prebuilt AppImage from `dist/` to `~/Applications`, verifies its
+checksum, installs an icon and a desktop entry, and adds **Razer PC Remote Play**
+to Steam as a non-Steam game with grid, hero and logo artwork from `steam-art/`.
+Switch back to Game Mode and it is in your library under **Non-Steam**, looking
+like any other game, ready to launch from Big Picture.
+
+On systems without `libfuse2` (AppImages need it to mount themselves) the
+installer unpacks the AppImage once and launches the unpacked copy instead.
+
+On a first install the client's settings are seeded with the handheld defaults
+from the section below (native 1920x1200 at 120 fps, virtual display only, 150%
+UI scale, five minute auto-close) and the device name is taken from the
+machine's hardware name, so the first stream needs no setup beyond pairing.
+Existing settings are never touched. `RPR_NO_DEFAULTS=1` skips this.
+
+If Steam is running the shortcut is added live. If Steam is closed the script
+writes it into `shortcuts.vdf` directly and it appears the next time Steam starts.
+Running the script again updates the AppImage and leaves the shortcut alone.
+
+Works the same on Bazzite and on any x86_64 Linux desktop with Steam. Set
+`RPR_NO_STEAM=1` to skip the Steam shortcut, `RPR_UNINSTALL=1` to remove the files.
+
+The AppImage takes `libva` from the system so that it uses the system's AMD
+VA-API driver for hardware decoding; everything else is bundled.
+
+## How this compares with Razer's Windows client
+
+Razer publishes the Windows client's source as
+[Cortex-PC-Remote-Play-Client](https://github.com/razerofficial/Cortex-PC-Remote-Play-Client).
+It is also a moonlight-qt fork, but a headless one: it has no UI of its own and is
+driven by Razer Cortex over a local HTTP API (host list, add and remove hosts, pair,
+app list and hide, stream, quit, settings, screen info). Everything that API exposes is
+something stock Moonlight's own UI already does, so this client reaches parity by
+sending the same Razer parameters the Windows engine sends:
+
+| Windows engine | This client |
+|---|---|
+| `virtualDisplay`, `virtualDisplayMode` from the primary monitor | Same parameters, mode taken from the chosen stream resolution and FPS |
+| `timeToTerminateApp` | Same, with a settings dropdown |
+| `devicenickname` on pair and launch | Same |
+| Cortex library box art fetched from `CustomImagePath` by the Cortex UI | Fetched by the client's box art cache |
+| HDR | Upstream Moonlight's HDR support (needs an HDR display and Wayland HDR output) |
+| Virtual speaker (host side) | Nothing to do on the client; "Play audio on host PC" maps to the same launch flag |
+| Razer ID pairing | **Not available.** The Windows engine gets a Razer account token from Cortex's login and exchanges it with Razer's Nexus service for a pairing secret. There is no public way to obtain that token outside Razer Cortex. PIN pairing works with every host setting, including "Manual" and "Automatic" Razer ID modes. |
+| Exits when Cortex exits, Cortex heartbeat | Not applicable |
 
 ## Zero-build option
 
@@ -56,7 +116,7 @@ flatpak install flathub com.moonlight_stream.Moonlight
 Pair with a PIN, pick the desktop or a game, and go. The host streams your physical
 monitor. Come back here when you want the virtual display.
 
-## Building on the Legion Go S
+## Building it yourself
 
 SteamOS and Bazzite have read-only system partitions, so build inside a container.
 Both ship `distrobox`. From Desktop Mode, open Konsole:
@@ -72,29 +132,20 @@ cd Cortex-PC-Remote-Play-Host/client-linux
 exit
 ```
 
-That leaves `out/RazerPCRemotePlay-x86_64.AppImage`. Copy it somewhere permanent
-and make it executable:
+That leaves `out/RazerPCRemotePlay-x86_64.AppImage`. To publish it, copy it to
+`dist/` and refresh `dist/SHA256SUMS`:
 
 ```
-mkdir -p ~/Applications
-cp out/RazerPCRemotePlay-x86_64.AppImage ~/Applications/
-chmod +x ~/Applications/RazerPCRemotePlay-x86_64.AppImage
+cp out/RazerPCRemotePlay-x86_64.AppImage dist/
+(cd dist && sha256sum RazerPCRemotePlay-x86_64.AppImage > SHA256SUMS)
 ```
 
-The AppImage is self-contained apart from `libva`, which it deliberately takes from
-the system so that it loads the system's up-to-date AMD VA-API driver (the same
-choice upstream makes for its AppImage).
+The Steam artwork is generated from the icon with `python3 scripts/make-steam-art.py`
+(needs Pillow).
 
 `./build.sh` without `--appimage` produces `out/moonlight`, which runs directly on
 any distro that has the runtime libraries installed. `./scripts/install-deps.sh`
 supports apt, dnf and pacman; only the apt list has been exercised end to end.
-
-### Adding it to Steam / Game Mode
-
-In Desktop Mode, open Steam, *Games > Add a Non-Steam Game to My Library*, browse
-to the AppImage. Rename it to "Razer PC Remote Play" in its properties. It then
-appears in Game Mode like any other game and runs under gamescope. Moonlight's
-*Fullscreen* display mode is the right choice there.
 
 ## Setting up the host (Windows PC)
 
@@ -109,12 +160,34 @@ appears in Game Mode like any other game and runs under gamescope. Moonlight's
 4. Select the host and enter the PIN Razer Cortex shows. Cortex displays the
    device name you set in the client's settings.
 
+### Hosting from a Windows gaming VM
+
+The host works in a VM as long as the VM looks like a real gaming PC to it:
+
+- **A passed-through GPU.** The host only does hardware encoding (NVENC, AMD VCE or
+  Intel QuickSync); a virtual GPU or software rendering fails with a capture or
+  encoding error. The Razer virtual display driver also binds to that GPU.
+- **Bridged networking**, so the VM has an address on the same LAN as the Legion Go
+  S. NAT networking hides the VM: automatic discovery (mDNS) will not see it and the
+  stream ports will not be reachable without port forwards. With bridged networking
+  the client finds it on its own; otherwise add it by the VM's IP.
+- **Ports open in the VM's Windows firewall**: TCP 47984, 47989, 48010 and UDP
+  47998 to 48000. The Razer installer normally adds these rules; if the client can
+  see the host but pairing or streaming stalls, check them.
+- **No monitor needed.** Use *Virtual display only* on the client (the installer's
+  default); the host creates a 1920x1200 display for the session and tears it down
+  afterwards. If the VM has a dummy plug or a passed-through monitor, *Duplicate* also
+  works.
+- **Razer Cortex must be running** in the VM with *Remote Play > Run as Host >
+  Start Hosting* on, since Cortex owns the virtual display and the pairing prompt.
+  Leave *Razer ID pairing* on *Automatic* or *Manual*; PIN pairing works in either.
+
 ## Recommended settings for the Legion Go S
 
 In the client's settings page:
 
 - **Resolution**: 1920x1200 (the native panel). Use *Custom* if it is not listed.
-- **Frame rate**: 120 if the host GPU keeps up, otherwise 90 or 60.
+- **Frame rate**: 120, the panel's native refresh rate (the installer's default). Drop to 90 or 60 if the host GPU or the Wi-Fi cannot keep up.
 - **Bitrate**: 20 to 40 Mbps on 5 GHz Wi-Fi, more on Ethernet.
 - **Video codec**: HEVC. AV1 if the host GPU encodes it (RTX 40 / RX 7000 or
   newer) and you want lower bitrate at the same quality.
@@ -126,6 +199,25 @@ In the client's settings page:
   Wi-Fi drops.
 - **Video decoder**: leave on *Automatic*. Check the performance overlay
   (Ctrl+Alt+Shift+S during a stream) says VAAPI, not software.
+
+## Testing against a fake host
+
+No Windows host is needed to check the protocol. `tests/fake_host.py` implements
+the host's pairing handshake exactly as `src/nvhttp.cpp` and `src/crypto.cpp` do,
+plus `/serverinfo`, `/applist` and `/launch`. The runner pairs the client with it
+through the CLI, launches Desktop and a game, and asserts that the requests carry
+the Razer parameters:
+
+```
+tests/run-protocol-test.sh                 # tests ./out/moonlight
+tests/run-protocol-test.sh ~/Applications/RazerPCRemotePlay-x86_64.AppImage
+```
+
+It needs `python3` with the `cryptography` module, `curl`, and `Xvfb` when
+there is no display. Run it after rebasing the patch onto a newer upstream.
+
+`tests/run-installer-test.sh` exercises `install.sh` in a scratch home with no
+network: both Steam paths, artwork, first-run defaults, rerun and uninstall.
 
 ## Working on the patch
 
@@ -148,6 +240,8 @@ Files touched by the patch, all under `app/` in moonlight-qt:
 - `streaming/session.cpp`: builds the Razer parameters from the preferences and
   the stream configuration.
 - `backend/nvpairingmanager.cpp`: sends `devicenickname` on the first pair request.
+- `main.cpp`, `gui/main.qml`: display name, SDL app name, no upstream update check.
+- `backend/nvapp.{h,cpp}`, `backend/boxartmanager.{h,cpp}`, `gui/appmodel.{h,cpp}`, `gui/AppView.qml`: Cortex library box art URL and platform.
 
 ## License
 

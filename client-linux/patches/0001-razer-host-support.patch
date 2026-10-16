@@ -1,5 +1,166 @@
+diff --git a/app/backend/boxartmanager.cpp b/app/backend/boxartmanager.cpp
+index 929b1e1..3e786a7 100644
+--- a/app/backend/boxartmanager.cpp
++++ b/app/backend/boxartmanager.cpp
+@@ -3,6 +3,13 @@
+ 
+ #include <QImageReader>
+ #include <QImageWriter>
++#include <QNetworkAccessManager>
++#include <QNetworkReply>
++#include <QEventLoop>
++#include <QTimer>
++
++#define REMOTE_BOX_ART_TIMEOUT_MS 10000
++#define REMOTE_BOX_ART_MAX_BYTES (8 * 1024 * 1024)
+ 
+ BoxArtManager::BoxArtManager(QObject *parent) :
+     QObject(parent),
+@@ -56,10 +63,10 @@ signals:
+ private:
+     void run()
+     {
+-        QUrl image = m_Bam->loadBoxArtFromNetwork(m_Computer, m_App.id);
++        QUrl image = m_Bam->loadBoxArtFromNetwork(m_Computer, m_App);
+         if (image.isEmpty()) {
+             // Give it another shot if it fails once
+-            image = m_Bam->loadBoxArtFromNetwork(m_Computer, m_App.id);
++            image = m_Bam->loadBoxArtFromNetwork(m_Computer, m_App);
+         }
+         emit boxArtFetchCompleted(m_Computer, m_App, image);
+     }
+@@ -104,16 +111,54 @@ void BoxArtManager::handleBoxArtLoadComplete(NvComputer* computer, NvApp app, QU
+     }
+ }
+ 
+-QUrl BoxArtManager::loadBoxArtFromNetwork(NvComputer* computer, int appId)
++QImage BoxArtManager::downloadImage(const QUrl& url)
++{
++    // Runs on a worker thread: use a private network manager with its own event loop
++    QNetworkAccessManager nam;
++    QNetworkRequest request(url);
++    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
++    QNetworkReply* reply = nam.get(request);
++
++    QEventLoop loop;
++    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
++    QTimer::singleShot(REMOTE_BOX_ART_TIMEOUT_MS, &loop, &QEventLoop::quit);
++    loop.exec(QEventLoop::ExcludeUserInputEvents);
++
++    QImage image;
++    if (!reply->isFinished()) {
++        qWarning() << "Timed out downloading box art from" << url.toString();
++        reply->abort();
++    }
++    else if (reply->error() != QNetworkReply::NoError) {
++        qWarning() << "Failed to download box art from" << url.toString() << ":" << reply->errorString();
++    }
++    else if (reply->bytesAvailable() > REMOTE_BOX_ART_MAX_BYTES) {
++        qWarning() << "Box art from" << url.toString() << "is too large";
++    }
++    else {
++        image = QImageReader(reply).read();
++    }
++    delete reply;
++    return image;
++}
++
++QUrl BoxArtManager::loadBoxArtFromNetwork(NvComputer* computer, const NvApp& app)
+ {
+     NvHTTP http(computer);
+ 
++    int appId = app.id;
+     QString cachePath = getFilePathForBoxArt(computer, appId);
+     QImage image;
+     try {
+         image = http.getBoxArt(appId);
+     } catch (...) {}
+ 
++    // Razer PC Remote Play Host: games synced from the Razer Cortex library point at
++    // remote artwork that the host cannot serve itself, so fetch it directly.
++    if (image.isNull() && !app.customImageUrl.isEmpty()) {
++        image = downloadImage(QUrl(app.customImageUrl));
++    }
++
+     // Cache the box art on disk if it loaded
+     if (!image.isNull()) {
+         if (image.save(cachePath)) {
+diff --git a/app/backend/boxartmanager.h b/app/backend/boxartmanager.h
+index 96ac47e..8176bf4 100644
+--- a/app/backend/boxartmanager.h
++++ b/app/backend/boxartmanager.h
+@@ -34,7 +34,11 @@ private slots:
+ 
+ private:
+     QUrl
+-    loadBoxArtFromNetwork(NvComputer* computer, int appId);
++    loadBoxArtFromNetwork(NvComputer* computer, const NvApp& app);
++
++    static
++    QImage
++    downloadImage(const QUrl& url);
+ 
+     QString
+     getFilePathForBoxArt(NvComputer* computer, int appId);
+diff --git a/app/backend/nvapp.cpp b/app/backend/nvapp.cpp
+index c1f3e06..65d26d9 100644
+--- a/app/backend/nvapp.cpp
++++ b/app/backend/nvapp.cpp
+@@ -6,6 +6,8 @@
+ #define SER_APPCOLLECTOR "appcollector"
+ #define SER_HIDDEN "hidden"
+ #define SER_DIRECTLAUNCH "directlaunch"
++#define SER_CUSTOMIMAGEURL "customimageurl"
++#define SER_PLATFORM "platform"
+ 
+ NvApp::NvApp(QSettings& settings)
+ {
+@@ -15,6 +17,8 @@ NvApp::NvApp(QSettings& settings)
+     isAppCollectorGame = settings.value(SER_APPCOLLECTOR).toBool();
+     hidden = settings.value(SER_HIDDEN).toBool();
+     directLaunch = settings.value(SER_DIRECTLAUNCH).toBool();
++    customImageUrl = settings.value(SER_CUSTOMIMAGEURL).toString();
++    platform = settings.value(SER_PLATFORM).toString();
+ }
+ 
+ void NvApp::serialize(QSettings& settings) const
+@@ -25,4 +29,6 @@ void NvApp::serialize(QSettings& settings) const
+     settings.setValue(SER_APPCOLLECTOR, isAppCollectorGame);
+     settings.setValue(SER_HIDDEN, hidden);
+     settings.setValue(SER_DIRECTLAUNCH, directLaunch);
++    settings.setValue(SER_CUSTOMIMAGEURL, customImageUrl);
++    settings.setValue(SER_PLATFORM, platform);
+ }
+diff --git a/app/backend/nvapp.h b/app/backend/nvapp.h
+index 4fdd286..75d8ffa 100644
+--- a/app/backend/nvapp.h
++++ b/app/backend/nvapp.h
+@@ -15,7 +15,9 @@ public:
+                 hdrSupported == other.hdrSupported &&
+                 isAppCollectorGame == other.isAppCollectorGame &&
+                 hidden == other.hidden &&
+-                directLaunch == other.directLaunch;
++                directLaunch == other.directLaunch &&
++                customImageUrl == other.customImageUrl &&
++                platform == other.platform;
+     }
+ 
+     bool operator!=(const NvApp& other) const
+@@ -39,6 +41,12 @@ public:
+     bool isAppCollectorGame = false;
+     bool hidden = false;
+     bool directLaunch = false;
++
++    // Razer PC Remote Play Host: Cortex library games carry an http(s) box art URL
++    // (CustomImagePath) that the host cannot serve through /appasset, and the
++    // launcher they belong to (GamePlatform: Steam, Epic, Xbox, ...).
++    QString customImageUrl;
++    QString platform;
+ };
+ 
+ Q_DECLARE_METATYPE(NvApp)
 diff --git a/app/backend/nvhttp.cpp b/app/backend/nvhttp.cpp
-index f447b4f..0a65279 100644
+index f447b4f..4ae9daa 100644
 --- a/app/backend/nvhttp.cpp
 +++ b/app/backend/nvhttp.cpp
 @@ -205,6 +205,7 @@ NvHTTP::startApp(QString verb,
@@ -20,6 +181,24 @@ index f447b4f..0a65279 100644
                                     LAUNCH_TIMEOUT_MS);
  
      qInfo() << "Launch response:" << response;
+@@ -342,6 +344,17 @@ NvHTTP::getAppList()
+                 else if (XML_NAME_EQUALS(name, "IsAppCollectorGame")) {
+                     apps.last().isAppCollectorGame = xmlReader.readElementText() == "1";
+                 }
++                else if (XML_NAME_EQUALS(name, "CustomImagePath")) {
++                    // Razer host: only remote URLs are useful to us; local host paths are
++                    // served through /appasset already.
++                    QString path = xmlReader.readElementText();
++                    if (path.startsWith("http://", Qt::CaseInsensitive) || path.startsWith("https://", Qt::CaseInsensitive)) {
++                        apps.last().customImageUrl = path;
++                    }
++                }
++                else if (XML_NAME_EQUALS(name, "GamePlatform")) {
++                    apps.last().platform = xmlReader.readElementText();
++                }
+             }
+         }
+     }
 diff --git a/app/backend/nvhttp.h b/app/backend/nvhttp.h
 index ea70780..f69c6cc 100644
 --- a/app/backend/nvhttp.h
@@ -63,6 +242,19 @@ index 665e7e8..ee65cf4 100644
                                                      0);
      NvHTTP::verifyResponseStatus(getCert);
      if (NvHTTP::getXmlString(getCert, "paired") != "1")
+diff --git a/app/gui/AppView.qml b/app/gui/AppView.qml
+index 09a5c2d..19bfcaf 100644
+--- a/app/gui/AppView.qml
++++ b/app/gui/AppView.qml
+@@ -110,7 +110,7 @@ CenteredGridView {
+             }
+ 
+             // Display a tooltip with the full name if it's truncated
+-            ToolTip.text: model.name
++            ToolTip.text: model.platform ? model.name + " (" + model.platform + ")" : model.name
+             ToolTip.delay: 1000
+             ToolTip.timeout: 5000
+             ToolTip.visible: (parent.hovered || parent.highlighted) && (!appNameText || appNameText.truncated)
 diff --git a/app/gui/SettingsView.qml b/app/gui/SettingsView.qml
 index c119d15..af69fb2 100644
 --- a/app/gui/SettingsView.qml
@@ -286,6 +478,79 @@ index c119d15..af69fb2 100644
          GroupBox {
              id: uiSettingsGroupBox
              width: (parent.width - (parent.leftPadding + parent.rightPadding))
+diff --git a/app/gui/appmodel.cpp b/app/gui/appmodel.cpp
+index 668f36c..5d5c84c 100644
+--- a/app/gui/appmodel.cpp
++++ b/app/gui/appmodel.cpp
+@@ -93,6 +93,8 @@ QVariant AppModel::data(const QModelIndex &index, int role) const
+         return app.directLaunch;
+     case AppCollectorGameRole:
+         return app.isAppCollectorGame;
++    case PlatformRole:
++        return app.platform;
+     default:
+         return QVariant();
+     }
+@@ -109,6 +111,7 @@ QHash<int, QByteArray> AppModel::roleNames() const
+     names[AppIdRole] = "appid";
+     names[DirectLaunchRole] = "directLaunch";
+     names[AppCollectorGameRole] = "appCollectorGame";
++    names[PlatformRole] = "platform";
+ 
+     return names;
+ }
+diff --git a/app/gui/appmodel.h b/app/gui/appmodel.h
+index 9d85640..bbf62e7 100644
+--- a/app/gui/appmodel.h
++++ b/app/gui/appmodel.h
+@@ -19,6 +19,7 @@ class AppModel : public QAbstractListModel
+         AppIdRole,
+         DirectLaunchRole,
+         AppCollectorGameRole,
++        PlatformRole,
+     };
+ 
+ public:
+diff --git a/app/gui/main.qml b/app/gui/main.qml
+index 84e7d9d..71aca91 100644
+--- a/app/gui/main.qml
++++ b/app/gui/main.qml
+@@ -369,8 +369,10 @@ ApplicationWindow {
+                 }
+ 
+                 Component.onCompleted: {
++                    // Upstream Moonlight's update check would send users to stock
++                    // Moonlight, which lacks the Razer host support. Updates for this
++                    // client come from the Cortex-PC-Remote-Play-Host repository.
+                     AutoUpdateChecker.onUpdateAvailable.connect(updateAvailable)
+-                    AutoUpdateChecker.start()
+                 }
+ 
+                 Keys.onDownPressed: {
+diff --git a/app/main.cpp b/app/main.cpp
+index 2b701d7..7b527ca 100644
+--- a/app/main.cpp
++++ b/app/main.cpp
+@@ -431,6 +431,8 @@ int main(int argc, char *argv[])
+     QCoreApplication::setOrganizationName("Moonlight Game Streaming Project");
+     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
+     QCoreApplication::setApplicationName("Moonlight");
++    // Shown in window titles and task switchers; settings paths above stay unchanged
++    QGuiApplication::setApplicationDisplayName("Razer PC Remote Play");
+ 
+     if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+         QSettings::setDefaultFormat(QSettings::IniFormat);
+@@ -715,8 +717,8 @@ int main(int argc, char *argv[])
+     // Set our app name for SDL to use with PulseAudio and PipeWire. This matches what we
+     // provide as our app name to libsoundio too. On SDL 2.0.18+, SDL_APP_NAME is also used
+     // for screensaver inhibitor reporting.
+-    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_APP_NAME, "Moonlight");
+-    SDL_SetHint(SDL_HINT_APP_NAME, "Moonlight");
++    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_APP_NAME, "Razer PC Remote Play");
++    SDL_SetHint(SDL_HINT_APP_NAME, "Razer PC Remote Play");
+ 
+     // SDL will try to lock the mouse cursor on Wayland if it's not visible in order to
+     // support applications that assume they can warp the cursor (which isn't possible
 diff --git a/app/settings/streamingpreferences.cpp b/app/settings/streamingpreferences.cpp
 index 6d143af..43f5a99 100644
 --- a/app/settings/streamingpreferences.cpp
@@ -389,7 +654,7 @@ index ad611f6..860d7b6 100644
  private:
      explicit StreamingPreferences(QQmlEngine *qmlEngine);
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
-index 40c1e59..af25770 100644
+index 40c1e59..0840813 100644
 --- a/app/streaming/session.cpp
 +++ b/app/streaming/session.cpp
 @@ -7,6 +7,8 @@
@@ -439,3 +704,12 @@ index 40c1e59..af25770 100644
                        rtspSessionUrl);
      } catch (const GfeHttpResponseException& e) {
          emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
+@@ -1843,7 +1869,7 @@ void Session::exec()
+ #ifdef Q_OS_DARWIN
+     std::string windowName = QString(m_Computer->name).toStdString();
+ #else
+-    std::string windowName = QString(m_Computer->name + " - Moonlight").toStdString();
++    std::string windowName = QString(m_Computer->name + " - Razer PC Remote Play").toStdString();
+ #endif
+ 
+     m_Window = SDL_CreateWindow(windowName.c_str(),
